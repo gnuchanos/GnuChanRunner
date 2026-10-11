@@ -45,7 +45,15 @@ except Exception:
 ROOT = Path(__file__).resolve().parent
 # Build output under _temp/, not in the source tree: a build is not a change to
 # the project, and the launcher's directory holds only sources.
-BUILD = ROOT.parent.parent.parent / "_temp" / "gnuchanrunner-build"
+#
+# TWO parents, not three: the makefile lives at <repo>/src/makefile.py, so
+# ROOT.parent is the repository and ROOT.parent.parent is the directory the
+# repositories are cloned into — which is where every other program's makefile
+# puts its _temp/ (see GnuChanPrograms.sh in GnuchanOS). Three parents pointed
+# one level ABOVE that shared directory, so this one program wrote its output
+# outside the tree the build cleans up and, on a build machine where that
+# parent was not writable, failed with a bare permission error.
+BUILD = ROOT.parent.parent / "_temp" / "gnuchanrunner-build"
 
 PROGRAM = "GnuChanRunner"
 BIN_DIR = Path("/usr/local/bin")
