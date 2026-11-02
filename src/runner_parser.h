@@ -1,11 +1,8 @@
 /*
- * runner_parser.h — enough of the Python grammar to read the settings file,
- * and nothing more.
+ * runner_parser.h — restricted legacy config.py reader; no Python evaluation.
  *
- * GnuChanRunner is configured by a script, the way GnuChanWM is, and for the
- * same reason: a person who can move a bar can move a window. The file is not
- * a config format with Python in it; it is the smallest part of Python that a
- * person would use to describe a launcher, and this reads exactly that.
+ * New settings are Key = value lines. This parser remains only for existing
+ * config.py files and reads a small fixed grammar; it never executes code.
  *
  *     Prompt = "Run:"                                  a name given a value
  *     GnuChanRunner.add_program(name="x", command="y") a call, named
@@ -91,7 +88,7 @@ struct RunnerStatement {
     int arg_count;
 };
 
-/* Parse the script at path. On success *out points at a newly allocated list
+/* Parse the legacy file at path. On success *out points at a newly allocated list
    of *out_count statements, which the caller frees with runner_parse_free().
    Returns 0 on success, -1 when the file cannot be read or contains a
    statement this grammar does not accept. */

@@ -1,11 +1,8 @@
 /*
  * runner_config.h — the settings GnuChanRunner is built from.
  *
- * GnuChanRunner is configured by a script, not by a file of key = value pairs,
- * the way GnuChanWM is: the same file a person would write to change a colour
- * or add a program of their own. That script is Python, and this header is the
- * shape of what running it produces — the small, fixed set of things a
- * launcher can be asked for.
+ * GnuChanRunner is configured by plain Key = value lines. A restricted parser
+ * remains for existing config.py files, which are never evaluated.
  *
  * Everything here is plain data. The script is read by runner_parser.c, walked
  * by runner_config.c, and drawn by runner_draw.c. Nothing in this header knows
@@ -129,17 +126,18 @@ typedef struct RunnerConfig {
 } RunnerConfig;
 
 /* The launcher a machine with no settings file gets: the prompt, the palette
-   and the behaviour the shipped config.py describes, all in code, so a machine
+   and the behaviour the shipped config.conf describes, all in code, so a machine
    that never had the file still starts. */
 void runner_config_defaults(RunnerConfig *config);
 
-/* Read the script at path into config. Returns 0 when the file was read and
+/* Read the settings at path into config. Returns 0 when the file was read and
    walked, -1 when it could not be opened or could not be parsed — in which
    case config is left at its defaults and `error` says why. */
 int runner_config_load(RunnerConfig *config, const char *path);
 
-/* Where the script is looked for: $XDG_CONFIG_HOME/GnuChanRunner/config.py, or
-   ~/.config/GnuChanRunner/config.py. Written into buffer, which is returned. */
+/* Where the file is looked for: $XDG_CONFIG_HOME/GnuChanRunner/config.conf, or
+   ~/.config/GnuChanRunner/config.conf. A legacy config.py is read when no
+   .conf exists. Written into buffer, which is returned. */
 char *runner_config_path(char *buffer, unsigned int size);
 
 #endif /* GNUCHANRUNNER_CONFIG_H */

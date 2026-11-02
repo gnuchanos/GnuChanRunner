@@ -1,11 +1,8 @@
 /*
- * runner_config.c — the walk that gives the settings script its meaning.
+ * runner_config.c — the Key = value settings reader.
  *
- * runner_parser.c reads the file as a name and a value, or a name and a call.
- * This is the other half: it knows which names and which calls a launcher
- * understands, and what each one means. The two are kept apart because they
- * are two jobs — reading a file and understanding it — and only this one needs
- * to know that "GnuChanRunner.add_program" is a program.
+ * New config.conf files use plain assignments. The restricted parser is kept
+ * only for legacy config.py files; neither format is executed as Python.
  *
  * The names it understands, whole:
  *
@@ -24,11 +21,12 @@
  *     ShowHidden = False
  *     Background / Panel / PanelEdge / Field / Text / TextMuted / Accent
  *
- *     GnuChanRunner.add_program(name="...", command="...")
- *     GnuChanRunner.add_desktop_dir(path="...")
+ *     DesktopDir = "/opt/my-programs"
+ *     TerminalProgram = "GnuChanTop"
+ *     Program = "System Monitor|GnuChanTop|terminal"
  *
  * A name that is not one of these is not a mistake worth refusing the file
- * for: a script is written while it is being lived with, and a value the
+ * for: a settings file is written while it is being lived with, and a value the
  * launcher does not use is a value it does not use. That is different from a
  * statement that cannot be READ — an unclosed bracket, a missing quote —
  * which is refused, because a half-read file is a file nobody can trust.
@@ -36,6 +34,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "runner_config.h"
 
@@ -242,6 +241,58 @@ static void read_terminal_programs(RunnerConfig *config,
     }
 }
 
+static void add_desktop_dir(RunnerConfig *config, const char *path) {
+    if (!path[0] || config->desktop_dir_count >= RUNNER_MAX_LIST_ITEMS) {
+        return;
+    }
+    snprintf(config->desktop_dirs[config->desktop_dir_count],
+             sizeof(config->desktop_dirs[0]), "%s", path);
+    config->desktop_dir_count++;
+}
+
+static void add_terminal_program(RunnerConfig *config, const char *name) {
+    if (!name[0] ||
+        config->terminal_program_count >= RUNNER_MAX_TERMINAL_PROGRAMS) {
+        return;
+    }
+    snprintf(config->terminal_programs[config->terminal_program_count],
+             sizeof(config->terminal_programs[0]), "%s", name);
+    config->terminal_program_count++;
+}
+
+static void add_program_line(RunnerConfig *config, const char *value) {
+    if (config->extra_program_count >= RUNNER_MAX_EXTRA_PROGRAMS) {
+        return;
+    }
+    const char *separator = strchr(value, '|');
+    if (!separator || separator == value || separator[1] == '\0') {
+        return;
+    }
+    size_t name_length = (size_t)(separator - value);
+    if (name_length >= RUNNER_TEXT_LENGTH) {
+        name_length = RUNNER_TEXT_LENGTH - 1;
+    }
+    int in_terminal = 0;
+    const char *command_end = strchr(separator + 1, '|');
+    size_t command_length = command_end
+                                ? (size_t)(command_end - (separator + 1))
+                                : strlen(separator + 1);
+    if (command_end && strcmp(command_end + 1, "terminal") == 0) {
+        in_terminal = 1;
+    }
+    if (command_length == 0) {
+        return;
+    }
+    int index = config->extra_program_count++;
+    snprintf(config->extra_programs[index].name,
+             sizeof(config->extra_programs[index].name), "%.*s",
+             (int)name_length, value);
+    snprintf(config->extra_programs[index].command,
+             sizeof(config->extra_programs[index].command), "%.*s",
+             (int)command_length, separator + 1);
+    config->extra_programs[index].in_terminal = in_terminal;
+}
+
 /* --- the walk ------------------------------------------------------------- */
 
 /* One assignment. The target is compared whole: `Prompt` is the prompt, and
@@ -310,6 +361,15 @@ static void apply_assignment(RunnerConfig *config,
         read_desktop_dirs_list(config, &statement->value);
     } else if (strcmp(target, "TerminalPrograms") == 0) {
         read_terminal_programs(config, &statement->value);
+    } else if (strcmp(target, "DesktopDir") == 0) {
+        runner_value_text(&statement->value, text, sizeof(text));
+        add_desktop_dir(config, text);
+    } else if (strcmp(target, "TerminalProgram") == 0) {
+        runner_value_text(&statement->value, text, sizeof(text));
+        add_terminal_program(config, text);
+    } else if (strcmp(target, "Program") == 0) {
+        runner_value_text(&statement->value, text, sizeof(text));
+        add_program_line(config, text);
     } else if (strcmp(target, "CommandMode") == 0) {
         runner_value_text(&statement->value, text, sizeof(text));
         if (strcmp(text, "always") == 0) {
@@ -344,12 +404,28 @@ static void apply_call(RunnerConfig *config,
 char *runner_config_path(char *buffer, unsigned int size) {
     const char *xdg = getenv("XDG_CONFIG_HOME");
     if (xdg && xdg[0]) {
+        snprintf(buffer, size, "%s/GnuChanRunner/config.conf", xdg);
+        if (access(buffer, R_OK) == 0) {
+            return buffer;
+        }
         snprintf(buffer, size, "%s/GnuChanRunner/config.py", xdg);
+        if (access(buffer, R_OK) == 0) {
+            return buffer;
+        }
+        snprintf(buffer, size, "%s/GnuChanRunner/config.conf", xdg);
         return buffer;
     }
     const char *home = getenv("HOME");
     if (home && home[0]) {
+        snprintf(buffer, size, "%s/.config/GnuChanRunner/config.conf", home);
+        if (access(buffer, R_OK) == 0) {
+            return buffer;
+        }
         snprintf(buffer, size, "%s/.config/GnuChanRunner/config.py", home);
+        if (access(buffer, R_OK) == 0) {
+            return buffer;
+        }
+        snprintf(buffer, size, "%s/.config/GnuChanRunner/config.conf", home);
         return buffer;
     }
     /* No home and no XDG directory: there is nowhere to look, and the caller
@@ -377,6 +453,27 @@ int runner_config_load(RunnerConfig *config, const char *path) {
         snprintf(config->error, sizeof(config->error), "%s",
                  runner_parse_last_error());
         return -1;
+    }
+
+    const char *extension = strrchr(path, '.');
+    int is_conf = extension && strcmp(extension, ".conf") == 0;
+    for (int i = 0; is_conf && i < count; i++) {
+        if (statements[i].kind != RUNNER_STMT_ASSIGN ||
+            strchr(statements[i].target, '.') != NULL) {
+            runner_parse_free(statements, count);
+            runner_config_defaults(config);
+            snprintf(config->error, sizeof(config->error),
+                     "config.conf accepts scalar Key = value lines only");
+            return -1;
+        }
+        RunnerValueKind kind = statements[i].value.kind;
+        if (kind == RUNNER_VALUE_LIST || kind == RUNNER_VALUE_CALL) {
+            runner_parse_free(statements, count);
+            runner_config_defaults(config);
+            snprintf(config->error, sizeof(config->error),
+                     "config.conf accepts scalar Key = value lines only");
+            return -1;
+        }
     }
 
     for (int i = 0; i < count; i++) {

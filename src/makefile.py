@@ -5,7 +5,7 @@
 #     python3 makefile.py
 #
 # Builds the launcher and installs it to /usr/local/bin, with its settings
-# script put where it will be read from — ~/.config/GnuChanRunner/config.py.
+# file put where it will be read from — ~/.config/GnuChanRunner/config.conf.
 # It needs root for the install and re-runs itself through sudo, exactly as
 # GnuChanWM's own makefile does.
 #
@@ -58,12 +58,12 @@ BUILD = ROOT.parent.parent / "_temp" / "gnuchanrunner-build"
 PROGRAM = "GnuChanRunner"
 BIN_DIR = Path("/usr/local/bin")
 
-# The settings script, installed into the user's own config directory. The
+# The settings file, installed into the user's own config directory. The
 # launcher reads it from there, so a machine that never had one gets the
 # shipped defaults written where it looks for them.
-CONFIG_SOURCE = ROOT / "GnuChanRunner_config" / "config.py"
+CONFIG_SOURCE = ROOT / "GnuChanRunner_config" / "config.conf"
 CONFIG_DIR_NAME = "GnuChanRunner"
-CONFIG_FILE_NAME = "config.py"
+CONFIG_FILE_NAME = "config.conf"
 
 SOURCES = (
     "runner_parser.c",
@@ -279,7 +279,7 @@ def install(binary: Path) -> None:
 def invoking_user() -> tuple[Path, int, int] | None:
     """The home and ids of the person who ran sudo, not root.
 
-    The settings script belongs to the person who logs in, and the launcher
+    The settings file belongs to the person who logs in, and the launcher
     reads it from their home. Under sudo, HOME and the ids are root's, so the
     original user is read back from SUDO_USER — the one piece of the invoking
     session sudo keeps. Returns None when there is nothing sensible to write to,
@@ -297,16 +297,10 @@ def invoking_user() -> tuple[Path, int, int] | None:
 
 
 def install_config() -> None:
-    """Put the settings script where the launcher will read it.
+    """Put the settings file where the launcher will read it.
 
-    The installed script is replaced on every run, not kept: this installer owns
-    that file, and a machine that installs a new build has to get the settings
-    that build ships with rather than whichever script happened to be there. A
-    script the user has edited is theirs to keep — the launcher already reads
-    the file live — so an existing one is left alone and only a missing one is
-    written. That is the one place this differs from the window manager's own
-    installer, which overwrites: the launcher's settings are few and personal,
-    and losing them to an install would be losing the programs someone added.
+    The installed default is only copied when missing: a user's existing file
+    belongs to them and is not replaced.
     """
     if not CONFIG_SOURCE.is_file():
         return
@@ -328,7 +322,7 @@ def install_config() -> None:
     directory.mkdir(parents=True, exist_ok=True)
 
     if target.exists():
-        # The script is the user's own: it holds the programs they added. A
+        # The file is the user's own: it holds the programs they added. A
         # missing one is written; an existing one is left as it is, and the
         # install says so rather than silently replacing it.
         detail(f"kept the existing {target}")
@@ -336,6 +330,10 @@ def install_config() -> None:
             os.chown(directory, uid, gid)
         except OSError:
             pass
+        return
+    legacy_target = directory / "config.py"
+    if legacy_target.exists():
+        detail(f"kept legacy settings file {legacy_target}")
         return
 
     shutil.copyfile(CONFIG_SOURCE, target)
@@ -354,7 +352,7 @@ def uninstall() -> None:
     if target.exists():
         target.unlink()
         detail(f"removed {target}")
-    note("The settings script under ~/.config/GnuChanRunner/ was left alone.")
+    note("The settings file under ~/.config/GnuChanRunner/ was left alone.")
 
 
 def run_program(binary: Path, arguments: list[str]) -> int:

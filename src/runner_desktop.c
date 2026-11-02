@@ -55,6 +55,59 @@ static void trim_space(char *line) {
     }
 }
 
+static void set_keywords(char *out, size_t size, const char *generic,
+                         const char *keywords) {
+    if (!out || size == 0) {
+        return;
+    }
+
+    generic = generic ? generic : "";
+    keywords = keywords ? keywords : "";
+    size_t generic_length = strlen(generic);
+    size_t keywords_length = strlen(keywords);
+    size_t available = size - 1;
+
+    if (generic_length && keywords_length) {
+        if (available < 2) {
+            if (available == 1) {
+                out[0] = keywords[0];
+                out[1] = '\0';
+            } else {
+                out[0] = '\0';
+            }
+            return;
+        }
+        size_t text_capacity = available - 1;
+        if (generic_length + keywords_length > text_capacity) {
+            size_t generic_limit = text_capacity / 2;
+            if (generic_length > generic_limit) {
+                generic_length = generic_limit;
+            }
+            size_t keywords_limit = text_capacity - generic_length;
+            if (keywords_length > keywords_limit) {
+                keywords_length = keywords_limit;
+            }
+        }
+        if (generic_length == 0) {
+            memcpy(out, keywords, keywords_length);
+            out[keywords_length] = '\0';
+            return;
+        }
+        memcpy(out, generic, generic_length);
+        out[generic_length] = ' ';
+        memcpy(out + generic_length + 1, keywords, keywords_length);
+        out[generic_length + keywords_length + 1] = '\0';
+    } else {
+        const char *value = generic_length ? generic : keywords;
+        size_t length = generic_length ? generic_length : keywords_length;
+        if (length > available) {
+            length = available;
+        }
+        memcpy(out, value, length);
+        out[length] = '\0';
+    }
+}
+
 /* Whether a value reads as yes. The specification says the two hidden keys
    are "true" or "false", but files in the wild write True and 1 as well, and
    reading them the way their writer meant is kinder than treating anything
@@ -240,14 +293,8 @@ int runner_desktop_read(const char *path, RunnerProgram *program,
        name first, then the keyword list. A search looks at the name, this, and
        the command's own program name (see runner_match.c), so "nemo" finds the
        entry whose displayed name is "Files". */
-    if (generic[0] && keywords[0]) {
-        snprintf(program->keywords, sizeof(program->keywords), "%s %s",
-                 generic, keywords);
-    } else if (generic[0]) {
-        snprintf(program->keywords, sizeof(program->keywords), "%s", generic);
-    } else if (keywords[0]) {
-        snprintf(program->keywords, sizeof(program->keywords), "%s", keywords);
-    }
+    set_keywords(program->keywords, sizeof(program->keywords), generic,
+                 keywords);
 
     char cleaned[RUNNER_TEXT_LENGTH];
     strip_field_codes(exec, cleaned, sizeof(cleaned));

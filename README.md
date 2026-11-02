@@ -13,8 +13,12 @@ and the text. It is Debian-only, on purpose.
 
 The makefile installs the build dependencies with apt-get, compiles the sources,
 and re-runs itself through sudo to write into `/usr/local/bin`. The binary goes
-to `/usr/local/bin/GnuChanRunner`; the settings script goes under
-`~/.config/GnuChanRunner/`. It is a separate program from the window manager and
+to `/usr/local/bin/GnuChanRunner`; the settings file goes to
+`~/.config/GnuChanRunner/config.conf`. It uses plain `Key = value` lines;
+repeat `DesktopDir`, `TerminalProgram`, or `Program` for multiple values.
+Custom programs use `Program = "name|command"` (add `|terminal` to run it in
+GnuChanTerm). Existing `config.py` files are parsed by a restricted legacy
+reader, never executed. It is a separate program from the window manager and
 installs on its own.
 
 The makefile takes an action as its first argument: `install` (the default),
@@ -47,13 +51,9 @@ from a shell.
 
 Programs whose desktop entries set `Terminal=true` run inside `GnuChanTerm`
 when it is installed. Other terminal emulators are only used as fallbacks.
-Add desktop-entry names or executable names to `TerminalPrograms` in the
-GnuChanRunner settings to force any other program to start in GnuChanTerm.
-For custom programs added with `GnuChanRunner.add_program`, set
-`terminal=True` to get the same behavior:
-
-    GnuChanRunner.add_program(name="System Monitor", command="GnuChanTop",
-                              terminal=True)
+Add desktop-entry names or executable names with repeated
+`TerminalProgram = "name"` lines in the GnuChanRunner settings to force any
+other program to start in GnuChanTerm.
 
 ## X11 only
 
