@@ -30,6 +30,7 @@
 
 #include "runner_apps.h"
 #include "runner_config.h"
+#include "runner_key_state.h"
 #include "runner_match.h"
 #include "runner_style.h"
 
@@ -80,6 +81,7 @@ typedef struct RunnerUi {
     int launch_selected;          /* the program row, or -1 for none        */
     char launch_command[RUNNER_MAX_QUERY];
 
+    RunnerKeyState keys_held_at_open;
     int running;
 } RunnerUi;
 

@@ -48,6 +48,9 @@ Alt+R:
 
 If the window manager's settings script does not bind it, run `GnuChanRunner`
 from a shell.
+Keys held when the launcher opens, including the Alt+R shortcut, are ignored
+until released; key repeat from the launch chord therefore does not enter the
+query.
 
 Programs whose desktop entries set `Terminal=true` run inside `GnuChanTerm`
 when it is installed. Other terminal emulators are only used as fallbacks.

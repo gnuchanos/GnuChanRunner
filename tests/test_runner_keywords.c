@@ -2,6 +2,7 @@
 #include <string.h>
 
 #include "../src/runner_desktop.c"
+#include "../src/runner_key_state.h"
 
 int runner_apps_split_command(RunnerProgram *program, const char *command) {
     (void)program;
@@ -18,6 +19,34 @@ static int check(int condition, const char *description) {
 }
 
 int main(void) {
+    RunnerKeyState key_state = {{0}};
+    char keymap[RUNNER_KEYMAP_SIZE] = {0};
+    const unsigned int shortcut_keycode = 38;
+    const unsigned int modifier_keycode = 64;
+    keymap[shortcut_keycode / 8] |=
+        (char)(1u << (shortcut_keycode % 8));
+    keymap[modifier_keycode / 8] |=
+        (char)(1u << (modifier_keycode % 8));
+    runner_key_state_capture(&key_state, keymap);
+    if (!check(runner_key_state_ignores_press(&key_state, shortcut_keycode),
+               "ignores the shortcut key held when the launcher opens") ||
+        !check(runner_key_state_ignores_press(&key_state, modifier_keycode),
+               "ignores the held Alt modifier") ||
+        !check(!runner_key_state_ignores_press(&key_state, 65),
+               "does not ignore keys that were not held at launch")) {
+        return 1;
+    }
+    runner_key_state_release(&key_state, shortcut_keycode, 1);
+    if (!check(runner_key_state_ignores_press(&key_state, shortcut_keycode),
+               "keeps ignoring a key across an auto-repeat release")) {
+        return 1;
+    }
+    runner_key_state_release(&key_state, shortcut_keycode, 0);
+    if (!check(!runner_key_state_ignores_press(&key_state, shortcut_keycode),
+               "accepts a key again after its real release")) {
+        return 1;
+    }
+
     char generic[RUNNER_TEXT_LENGTH];
     memset(generic, 'g', sizeof(generic) - 1);
     generic[sizeof(generic) - 1] = '\0';

@@ -387,6 +387,20 @@ static void handle_key(RunnerUi *ui, XKeyEvent *key) {
     }
 }
 
+/* X reports an auto-repeat as a release followed immediately by a press with
+   the same timestamp. Do not treat that synthetic release as the end of a key
+   that was already down when the launcher took the keyboard. */
+static int key_release_is_repeat(Display *display, XKeyEvent *release) {
+    if (XPending(display) == 0) {
+        return 0;
+    }
+    XEvent next;
+    XPeekEvent(display, &next);
+    return next.type == KeyPress &&
+           next.xkey.keycode == release->keycode &&
+           next.xkey.time == release->time;
+}
+
 /* --- the window ----------------------------------------------------------- */
 
 /* Take the keyboard and the pointer for as long as the launcher is up.
@@ -521,8 +535,9 @@ int runner_ui_open(RunnerUi *ui, const char *config_path) {
     attributes.override_redirect = True;
     attributes.background_pixel = ui->style.background;
     attributes.border_pixel = 0;
-    attributes.event_mask = ExposureMask | KeyPressMask | ButtonPressMask |
-                            ButtonReleaseMask | PointerMotionMask;
+    attributes.event_mask = ExposureMask | KeyPressMask | KeyReleaseMask |
+                            ButtonPressMask | ButtonReleaseMask |
+                            PointerMotionMask;
 
     ui->window = XCreateWindow(ui->display, ui->root, 0, 0,
                                (unsigned int)ui->config.width, 100, 0,
@@ -569,6 +584,10 @@ int runner_ui_open(RunnerUi *ui, const char *config_path) {
     if (!grab_input(ui)) {
         return -1;
     }
+    char keymap[RUNNER_KEYMAP_SIZE] = {0};
+    if (XQueryKeymap(ui->display, keymap)) {
+        runner_key_state_capture(&ui->keys_held_at_open, keymap);
+    }
     runner_draw(ui);
     ui->running = 1;
     return 0;
@@ -585,7 +604,17 @@ int runner_ui_run(RunnerUi *ui) {
 
         switch (event.type) {
         case KeyPress:
+            if (runner_key_state_ignores_press(
+                    &ui->keys_held_at_open, event.xkey.keycode)) {
+                break;
+            }
             handle_key(ui, &event.xkey);
+            break;
+
+        case KeyRelease:
+            runner_key_state_release(
+                &ui->keys_held_at_open, event.xkey.keycode,
+                key_release_is_repeat(ui->display, &event.xkey));
             break;
 
         case ButtonPress:

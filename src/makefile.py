@@ -87,6 +87,7 @@ HEADERS = (
     "runner_style.h",
     "runner_launch.h",
     "runner_draw.h",
+    "runner_key_state.h",
     "runner_ui.h",
     "gnuchan_lang.h",
 )
