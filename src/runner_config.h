@@ -23,12 +23,15 @@
 /* The .desktop entries the scan will hold. Read off /usr/share/applications
    and the user's own directory; far more than a desktop has room to show, so
    the ceiling is a bound on memory and not on the list a person sees. */
-#define RUNNER_MAX_DESKTOP_ENTRIES 512
+#define RUNNER_MAX_DESKTOP_ENTRIES 4096
 
-/* The directories the scan reads when the script names none. These are the
-   two the freedesktop specification puts an installed program's entry in: one
-   for the system's packages and one for what the user installed themselves. */
-#define RUNNER_DEFAULT_SYSTEM_DIRS "/usr/share/applications"
+/* The system data roots used by the freedesktop specification when
+   XDG_DATA_DIRS is unset. Applications installed under /usr/local put their
+   desktop entries there, just as packaged applications put theirs under
+   /usr/share. */
+#ifndef RUNNER_DEFAULT_DATA_DIRS
+#define RUNNER_DEFAULT_DATA_DIRS "/usr/local/share:/usr/share"
+#endif
 
 /* The colour and font names a widget may carry. Long enough for a colour like
    "#c77dff" and a font like "monospace:pixelsize=12", which are the two kinds

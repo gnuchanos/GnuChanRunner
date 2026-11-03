@@ -1,14 +1,10 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
+#include "../src/runner_apps.h"
 #include "../src/runner_desktop.c"
 #include "../src/runner_key_state.h"
-
-int runner_apps_split_command(RunnerProgram *program, const char *command) {
-    (void)program;
-    (void)command;
-    return -1;
-}
 
 static int check(int condition, const char *description) {
     if (!condition) {
@@ -18,7 +14,77 @@ static int check(int condition, const char *description) {
     return 1;
 }
 
+static int has_program(const RunnerProgramList *list, const char *name) {
+    for (int i = 0; i < list->count; i++) {
+        if (strcmp(list->items[i].name, name) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int has_program_command(const RunnerProgramList *list, const char *name,
+                               const char *command) {
+    for (int i = 0; i < list->count; i++) {
+        if (strcmp(list->items[i].name, name) == 0 &&
+            strcmp(list->items[i].command[0], command) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int check_discovery(void) {
+    if (setenv("HOME", "tests/fixtures/runner-discovery/home", 1) != 0 ||
+        setenv("XDG_DATA_DIRS",
+               "tests/fixtures/runner-discovery/system:"
+               "tests/fixtures/runner-discovery/xdg-extra", 1) != 0 ||
+        unsetenv("XDG_DATA_HOME") != 0) {
+        return check(0, "sets isolated XDG paths for discovery test");
+    }
+
+    RunnerConfig config = {0};
+    config.desktop_dir_count = 1;
+    snprintf(config.desktop_dirs[0], sizeof(config.desktop_dirs[0]),
+             "tests/fixtures/runner-discovery/custom");
+    config.extra_program_count = 1;
+    snprintf(config.extra_programs[0].name,
+             sizeof(config.extra_programs[0].name), "Manual Utility");
+    snprintf(config.extra_programs[0].command,
+             sizeof(config.extra_programs[0].command), "manual-utility");
+
+    RunnerProgramList list;
+    runner_apps_init(&list);
+    runner_apps_load(&list, &config);
+
+    int passed =
+        check(has_program(&list, "System Catalog App"),
+              "finds apps from XDG_DATA_DIRS") &&
+        check(has_program(&list, "Extra XDG Catalog App"),
+              "finds apps from every XDG_DATA_DIRS root") &&
+        check(has_program_command(&list, "GnuChan Desktop",
+                                  "gnuchan-desktop-panel"),
+              "finds the /usr/local-installed GnuChan Desktop app by default") &&
+        check(has_program(&list, "System Fallback Catalog App"),
+              "includes the /usr-style fallback by default") &&
+        check(has_program(&list, "User Catalog App"),
+              "finds apps installed for the current user") &&
+        check(has_program_command(&list, "User Priority App",
+                                  "user-priority-command"),
+              "prefers the user's desktop entry when names collide") &&
+        check(has_program(&list, "Custom Catalog App"),
+              "adds DesktopDir entries without replacing installed apps") &&
+        check(has_program(&list, "Manual Utility"),
+              "keeps manually configured programs alongside discovered apps");
+    runner_apps_free(&list);
+    return passed;
+}
+
 int main(void) {
+    if (!check_discovery()) {
+        return 1;
+    }
+
     RunnerKeyState key_state = {{0}};
     char keymap[RUNNER_KEYMAP_SIZE] = {0};
     const unsigned int shortcut_keycode = 38;

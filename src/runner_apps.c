@@ -206,26 +206,42 @@ static void scan_directory(RunnerProgramList *list, const char *path,
 
         /* The list's own add, so a name seen twice — the system's entry and
            the user's overriding one — is kept once. */
-        runner_apps_add(list, program.name, program.comment,
-                        program.command[0], program.in_terminal);
-        /* The command is a set of words, and runner_apps_add takes a written
-           line, so the first word is not the whole command. The program is
-           copied in directly instead when the line would lose its arguments. */
-        if (list->count > 0 &&
-            strcmp(list->items[list->count - 1].name, program.name) == 0) {
-            /* Replace what the name-based add could not carry: the whole
-               command, exactly as the file wrote it after the field codes
-               were taken out. */
+        if (runner_apps_add(list, program.name, program.comment,
+                            program.command[0], program.in_terminal) == 0) {
+            /* runner_apps_add takes a written line, so copy the complete
+               parsed command only when this entry was actually inserted.
+               Earlier directories have precedence when names collide. */
             list->items[list->count - 1] = program;
         }
     }
     closedir(directory);
 }
 
-/* The directories the scan reads: what the script named, or the default when
-   it named none. */
-static int config_has_dirs(const RunnerConfig *config) {
-    return config && config->desktop_dir_count > 0;
+/* Read every data root in a colon-separated XDG_DATA_DIRS value. Desktop
+   entries live under <data-root>/applications, not in the root itself. */
+static void scan_data_roots(RunnerProgramList *list, const char *roots,
+                            const RunnerConfig *config) {
+    if (!roots || !roots[0]) {
+        return;
+    }
+
+    const char *start = roots;
+    while (*start) {
+        const char *end = strchr(start, ':');
+        size_t length = end ? (size_t)(end - start) : strlen(start);
+        if (length > 0 &&
+            length <= RUNNER_TEXT_LENGTH * 2 - sizeof("/applications")) {
+            char applications[RUNNER_TEXT_LENGTH * 2];
+            memcpy(applications, start, length);
+            memcpy(applications + length, "/applications",
+                   sizeof("/applications"));
+            scan_directory(list, applications, config);
+        }
+        if (!end) {
+            break;
+        }
+        start = end + 1;
+    }
 }
 
 int runner_apps_load(RunnerProgramList *list, const RunnerConfig *config) {
@@ -233,28 +249,41 @@ int runner_apps_load(RunnerProgramList *list, const RunnerConfig *config) {
         return 0;
     }
 
-    if (config_has_dirs(config)) {
-        for (int i = 0; i < config->desktop_dir_count; i++) {
-            scan_directory(list, config->desktop_dirs[i], config);
-        }
-    } else {
-        scan_directory(list, RUNNER_DEFAULT_SYSTEM_DIRS, config);
-
-        /* The user's own directory as well: a program installed by hand puts
-           its entry under the home, and a launcher that read only the system's
-           would miss everything the person added themselves. */
-        const char *home = getenv("HOME");
-        if (home && home[0]) {
-            char user_dir[RUNNER_TEXT_LENGTH * 2];
-            snprintf(user_dir, sizeof(user_dir),
-                     "%s/.local/share/applications", home);
-            scan_directory(list, user_dir, config);
-        }
+    /* User-installed entries take precedence over system-wide ones. */
+    const char *data_home = getenv("XDG_DATA_HOME");
+    const char *home = getenv("HOME");
+    char user_dir[RUNNER_TEXT_LENGTH * 2];
+    if (data_home && data_home[0]) {
+        snprintf(user_dir, sizeof(user_dir), "%s/applications", data_home);
+        scan_directory(list, user_dir, config);
+    } else if (home && home[0]) {
+        snprintf(user_dir, sizeof(user_dir),
+                 "%s/.local/share/applications", home);
+        scan_directory(list, user_dir, config);
     }
 
-    /* The script's own programs last, so they are in the list whatever the
-       directories held — a program the person wrote down is a program they
-       mean to be able to start. */
+    /* XDG_DATA_DIRS is the session's full list of system data roots. Include
+       the standard /usr/local and /usr roots as fallbacks too, since programs
+       installed there (including GnuChan apps) should remain discoverable
+       even when a session exports a shortened XDG_DATA_DIRS. */
+    const char *data_dirs = getenv("XDG_DATA_DIRS");
+    int has_custom_data_dirs = data_dirs && data_dirs[0];
+    if (!has_custom_data_dirs) {
+        data_dirs = RUNNER_DEFAULT_DATA_DIRS;
+    }
+    scan_data_roots(list, data_dirs, config);
+    if (has_custom_data_dirs &&
+        strcmp(data_dirs, RUNNER_DEFAULT_DATA_DIRS) != 0) {
+        scan_data_roots(list, RUNNER_DEFAULT_DATA_DIRS, config);
+    }
+
+    /* Explicit DesktopDir settings extend normal discovery rather than
+       replacing it, so adding a private catalog never hides installed apps. */
+    for (int i = 0; i < config->desktop_dir_count; i++) {
+        scan_directory(list, config->desktop_dirs[i], config);
+    }
+
+    /* Keep custom programs in the same results as discovered applications. */
     for (int i = 0; i < config->extra_program_count; i++) {
         runner_apps_add(list, config->extra_programs[i].name, "",
                         config->extra_programs[i].command,

@@ -16,10 +16,19 @@ and re-runs itself through sudo to write into `/usr/local/bin`. The binary goes
 to `/usr/local/bin/GnuChanRunner`; the settings file goes to
 `~/.config/GnuChanRunner/config.conf`. It uses plain `Key = value` lines;
 repeat `DesktopDir`, `TerminalProgram`, or `Program` for multiple values.
-Custom programs use `Program = "name|command"` (add `|terminal` to run it in
-GnuChanTerm). Existing `config.py` files are parsed by a restricted legacy
-reader, never executed. It is a separate program from the window manager and
-installs on its own.
+Installed applications are discovered automatically from the user's
+`XDG_DATA_HOME` and system `XDG_DATA_DIRS` application folders, including
+`/usr/local/share/applications` and `/usr/share/applications`; custom
+`DesktopDir` folders are added to that catalog. Programs with desktop entries
+need no manual `Program` setting. Use `Program = "name|command"` only for
+personal commands that do not have a desktop entry (add `|terminal` to run it
+in GnuChanTerm). Binary-only executables are not enumerated from `/usr/local/bin`,
+which would add unrelated utilities and services to the launcher. The list
+shows a few results at a time; use the arrow keys to scroll through matches or
+type part of a program name to filter them.
+Existing `config.py` files are parsed by a restricted legacy reader, never
+executed. It is a separate program from the window manager and installs on its
+own.
 
 The makefile takes an action as its first argument: `install` (the default),
 `build`, `run`, `list` and `uninstall`. `list` compiles and prints what the scan
