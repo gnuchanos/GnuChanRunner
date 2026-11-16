@@ -440,6 +440,16 @@ static int grab_input(RunnerUi *ui) {
     int keyboard = GrabNotViewable;
     int pointer_grabbed = 0;
     int keyboard_grabbed = 0;
+
+    /* A previous GnuChanRunner process that crashed may have left its keyboard
+       and pointer grabs active. The X server holds them until the owning client
+       disconnects, but if that client died without ungrabbing, the new instance
+       can fail on GrabAlreadyGrabbed for the entire retry window. Force-release
+       any existing grab before trying to take our own. */
+    XUngrabKeyboard(ui->display, CurrentTime);
+    XUngrabPointer(ui->display, CurrentTime);
+    XSync(ui->display, False);
+
     for (int attempt = 0; attempt < 20; attempt++) {
         if (!pointer_grabbed) {
             pointer = XGrabPointer(

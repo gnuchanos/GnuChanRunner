@@ -13,7 +13,8 @@ and the text. It is Debian-only, on purpose.
 
 The makefile installs the build dependencies with apt-get, compiles the sources,
 and re-runs itself through sudo to write into `/usr/local/bin`. The binary goes
-to `/usr/local/bin/GnuChanRunner`; the settings file goes to
+to `/usr/local/bin/GnuChanRunner`, with a Utility application entry under
+`/usr/local/share/applications`; the settings file goes to
 `~/.config/GnuChanRunner/config.conf`. It uses plain `Key = value` lines;
 repeat `DesktopDir`, `TerminalProgram`, or `Program` for multiple values.
 Installed applications are discovered automatically from the user's

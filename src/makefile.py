@@ -57,11 +57,13 @@ BUILD = ROOT.parent.parent / "_temp" / "gnuchanrunner-build"
 
 PROGRAM = "GnuChanRunner"
 BIN_DIR = Path("/usr/local/bin")
+APPS_DIR = Path("/usr/local/share/applications")
+DESKTOP_FILE = APPS_DIR / "gnuchanrunner.desktop"
 
 # The settings file, installed into the user's own config directory. The
 # launcher reads it from there, so a machine that never had one gets the
 # shipped defaults written where it looks for them.
-CONFIG_SOURCE = ROOT / "GnuChanRunner_config" / "config.conf"
+CONFIG_SOURCE = ROOT / "config" / "config.conf"
 CONFIG_DIR_NAME = "GnuChanRunner"
 CONFIG_FILE_NAME = "config.conf"
 
@@ -261,6 +263,20 @@ def build() -> Path:
     return output
 
 
+def desktop_entry_text() -> str:
+    return "\n".join([
+        "[Desktop Entry]",
+        "Type=Application",
+        "Name=GnuChan Runner",
+        "Comment=Search and launch installed applications",
+        f"Exec={BIN_DIR / PROGRAM}",
+        f"TryExec={BIN_DIR / PROGRAM}",
+        "Terminal=false",
+        "Categories=Utility;",
+        "",
+    ])
+
+
 def install(binary: Path) -> None:
     step("Installing")
     BIN_DIR.mkdir(parents=True, exist_ok=True)
@@ -275,6 +291,12 @@ def install(binary: Path) -> None:
     staged.chmod(0o755)
     os.replace(str(staged), str(BIN_DIR / PROGRAM))
     detail(f"installed {BIN_DIR / PROGRAM}")
+
+    APPS_DIR.mkdir(parents=True, exist_ok=True)
+    desktop_staged = DESKTOP_FILE.with_name(DESKTOP_FILE.name + ".new")
+    desktop_staged.write_text(desktop_entry_text(), encoding="utf-8")
+    os.replace(str(desktop_staged), str(DESKTOP_FILE))
+    detail(f"installed {DESKTOP_FILE}")
 
 
 def invoking_user() -> tuple[Path, int, int] | None:
@@ -353,6 +375,9 @@ def uninstall() -> None:
     if target.exists():
         target.unlink()
         detail(f"removed {target}")
+    if DESKTOP_FILE.exists():
+        DESKTOP_FILE.unlink()
+        detail(f"removed {DESKTOP_FILE}")
     note("The settings file under ~/.config/GnuChanRunner/ was left alone.")
 
 

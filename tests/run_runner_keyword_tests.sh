@@ -12,3 +12,20 @@ cc -std=c99 -Wall -Wextra -Werror -Wno-unused-parameter \
    -DRUNNER_DEFAULT_DATA_DIRS='"tests/fixtures/runner-discovery/fallback-local:tests/fixtures/runner-discovery/fallback-system"' \
    -o "$test_binary"
 "$test_binary"
+
+python3 - "$root/src/makefile.py" <<'PY'
+import runpy
+import sys
+
+makefile = runpy.run_path(sys.argv[1])
+entry = makefile["desktop_entry_text"]()
+for line in (
+    "[Desktop Entry]",
+    "Type=Application",
+    "Name=GnuChan Runner",
+    "Exec=/usr/local/bin/GnuChanRunner",
+    "Categories=Utility;",
+):
+    if line not in entry.splitlines():
+        raise SystemExit(f"runner desktop entry is missing {line!r}")
+PY
