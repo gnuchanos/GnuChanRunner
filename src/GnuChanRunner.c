@@ -37,6 +37,7 @@
 #include "runner_launch.h"
 #include "runner_ui.h"
 #include "gnuchan_lang.h"
+#include <X11/Xlib.h>
 
 #define GNUCHANRUNNER_VERSION "0.1.0"
 
@@ -105,14 +106,26 @@ static int run_launcher(const char *config_path) {
         have_program = 1;
     }
 
+    /* Keep the X connection alive for launch after tearing down the UI.
+       runner_ui_close() would normally close it, so detach it from ui first. */
     Display *display = ui.display;
+    ui.display = NULL;
+
+    /* Close the launcher window and release all grabs before starting the
+       selected program. This avoids races where the launched application maps
+       while the override-redirect runner is still on screen or where stale UI
+       state interferes with focus handoff. */
+    runner_ui_close(&ui);
+
     if (have_program) {
         runner_launch_program(display, &chosen_program);
     } else if (chosen == 0 && command[0]) {
         runner_launch_command(display, command);
     }
 
-    runner_ui_close(&ui);
+    if (display) {
+        XCloseDisplay(display);
+    }
     return 0;
 }
 

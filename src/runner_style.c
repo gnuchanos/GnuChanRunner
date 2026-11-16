@@ -108,15 +108,14 @@ int runner_style_load(RunnerStyle *style, Display *display, int screen,
 
     style->font = open_font(display, screen, config);
 
-    /* A row is as tall as a line of text plus room above and below it, so the
-       rows never touch and the list reads as a list rather than a block of
-       words. Measured from the font rather than fixed, because a launcher
-       configured with a large font has to grow its rows with it. */
+    /* A row is as tall as a line of text plus generous breathing room, so the
+       list feels lighter and easier to scan. Measured from the font rather than
+       fixed, because larger fonts must grow rows with them. */
     int line = style->font ? (style->font->ascent + style->font->descent) : 16;
-    style->padding = 8;
-    style->row_height = line + 10;
-    if (style->row_height < 22) {
-        style->row_height = 22;
+    style->padding = 14;
+    style->row_height = line + 18;
+    if (style->row_height < 30) {
+        style->row_height = 30;
     }
 
     return 0;

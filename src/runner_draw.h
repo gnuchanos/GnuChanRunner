@@ -22,6 +22,6 @@
    anything — a letter, an arrow, Enter — because the window is small and
    redrawing it in one pass is simpler and no slower than working out which
    part changed. */
-void runner_draw(const RunnerUi *ui);
+void runner_draw(RunnerUi *ui);
 
 #endif /* GNUCHANRUNNER_DRAW_H */

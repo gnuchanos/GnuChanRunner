@@ -61,7 +61,7 @@ BIN_DIR = Path("/usr/local/bin")
 # The settings file, installed into the user's own config directory. The
 # launcher reads it from there, so a machine that never had one gets the
 # shipped defaults written where it looks for them.
-CONFIG_SOURCE = ROOT / "GnuChanRunner_config" / "config.conf"
+CONFIG_SOURCE = ROOT / "config" / "config.conf"
 CONFIG_DIR_NAME = "GnuChanRunner"
 CONFIG_FILE_NAME = "config.conf"
 

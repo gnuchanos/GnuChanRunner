@@ -43,31 +43,30 @@
 void runner_config_defaults(RunnerConfig *config) {
     memset(config, 0, sizeof(*config));
 
-    snprintf(config->prompt, sizeof(config->prompt), "Run:");
+    snprintf(config->prompt, sizeof(config->prompt), "›");
     snprintf(config->placeholder, sizeof(config->placeholder),
-             "Type to search programs");
+             "Search apps and commands...");
     snprintf(config->empty_message, sizeof(config->empty_message),
-             "Nothing matches");
+             "No matching applications");
 
-    snprintf(config->font_family, sizeof(config->font_family), "monospace");
-    config->font_size = 13;
+    snprintf(config->font_family, sizeof(config->font_family),
+             "Sans:pixelsize=14");
+    config->font_size = 14;
 
-    /* Wide enough for a program's name and its description on one line, and
-       eight rows tall: enough to see what a query found without the list
-       becoming the whole screen. */
-    config->width = 520;
-    config->rows = 8;
+    /* A comfortable default size: wide enough for names/descriptions and tall
+       enough to scan results without dominating the screen. */
+    config->width = 720;
+    config->rows = 10;
     snprintf(config->position, sizeof(config->position), "center");
 
-    /* The same purple the window manager and the greeter are drawn in, as
-       names. They are resolved to pixels by whoever has a display. */
-    snprintf(config->background, sizeof(config->background), "#1a0b2e");
-    snprintf(config->panel, sizeof(config->panel), "#32143f");
-    snprintf(config->panel_edge, sizeof(config->panel_edge), "#7b2cbf");
-    snprintf(config->field, sizeof(config->field), "#241033");
-    snprintf(config->text, sizeof(config->text), "#e0c3fc");
-    snprintf(config->text_muted, sizeof(config->text_muted), "#9d7bba");
-    snprintf(config->accent, sizeof(config->accent), "#c77dff");
+    /* Refreshed dark palette with clearer contrast and a calmer accent. */
+    snprintf(config->background, sizeof(config->background), "#161821");
+    snprintf(config->panel, sizeof(config->panel), "#1f2330");
+    snprintf(config->panel_edge, sizeof(config->panel_edge), "#2b3142");
+    snprintf(config->field, sizeof(config->field), "#2a3348");
+    snprintf(config->text, sizeof(config->text), "#e6eaf2");
+    snprintf(config->text_muted, sizeof(config->text_muted), "#98a2b3");
+    snprintf(config->accent, sizeof(config->accent), "#7aa2f7");
 
     /* Forgiving by default. A capital letter is not something a person
        remembers about a program's name, and a launcher that missed a program

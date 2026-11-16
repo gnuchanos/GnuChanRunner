@@ -44,11 +44,14 @@ typedef struct RunnerUi {
     Window root;
     Window window;
     GC gc;
+    Pixmap buffer;
 
     int screen_width;
     int screen_height;
     int width;              /* the window's own size, worked out at open */
     int height;
+    int buffer_width;
+    int buffer_height;
 
     RunnerConfig config;
     RunnerStyle style;

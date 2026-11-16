@@ -69,13 +69,17 @@ static int finish_checked_x_request(Display *display) {
    nowhere. */
 static void work_out_geometry(RunnerUi *ui) {
     int rows = ui->config.rows;
-    int visible = ui->matches.count < rows ? ui->matches.count : rows;
+    if (rows < 1) rows = 1;
+
+    int row_count = ui->matches.count + (ui->command_row >= 0 ? 1 : 0);
+    int visible = row_count < rows ? row_count : rows;
     if (visible < 1) {
         visible = 1;
     }
 
     int row_height = ui->style.row_height;
-    int max_visible = (ui->screen_height - row_height - 2) / row_height;
+    int top_gap = 6;
+    int max_visible = (ui->screen_height - row_height - top_gap - 2) / row_height;
     if (max_visible < 1) {
         max_visible = 1;
     }
@@ -83,18 +87,66 @@ static void work_out_geometry(RunnerUi *ui) {
         visible = max_visible;
     }
 
+    /* Start from configured width, then grow to fit visible row content so long
+       names/descriptions are readable instead of being cut with ellipsis. */
     ui->width = ui->config.width;
+    int desired = ui->width;
+    int right_pad = ui->style.padding + 24;
+    int left_pad = ui->style.padding + 10;
+    int limit = ui->screen_width - 80;
+    if (limit < ui->config.width) {
+        limit = ui->config.width;
+    }
+    if (limit > ui->screen_width - 20) {
+        limit = ui->screen_width - 20;
+    }
+
+    for (int row = 0; row < visible; row++) {
+        int index = ui->scroll + row;
+        if (index < 0 || index >= row_count) {
+            continue;
+        }
+
+        const char *name = NULL;
+        const char *comment = NULL;
+        char cmd[RUNNER_MAX_QUERY + 32];
+        if (index == ui->command_row) {
+            if (ui->query[0]) {
+                snprintf(cmd, sizeof(cmd), "Run command: %s", ui->query);
+            } else {
+                snprintf(cmd, sizeof(cmd), "Run command");
+            }
+            name = cmd;
+            comment = "Execute in shell";
+        } else {
+            const RunnerProgram *program =
+                &ui->programs.items[ui->matches.items[index].program_index];
+            name = program->name;
+            comment = program->comment;
+        }
+
+        int w = left_pad + runner_style_text_width(ui->display, ui->style.font,
+                                                    name ? name : "") +
+                right_pad;
+        if (comment && comment[0]) {
+            w += ui->style.padding +
+                 runner_style_text_width(ui->display, ui->style.font, comment);
+        }
+        if (w > desired) desired = w;
+    }
+
+    if (desired > limit) desired = limit;
+    if (desired < 320) desired = 320;
+    ui->width = desired;
     if (ui->width > ui->screen_width) {
         ui->width = ui->screen_width;
     }
 
-    /* The height is the query line, the gap under it, the rows, and the room
-       the border takes. It grows with the number of matches only up to the
-       configured number of rows, so the launcher is the same size whether the
-       query found two programs or two hundred — which is what makes it
-       readable while a person is typing. */
-    ui->height = ui->style.row_height + 2
-               + visible * ui->style.row_height;
+    /* The height is the query line, a small gap, the visible rows, and border
+       room. It grows with available results up to the configured row count so
+       the launcher stays stable while typing. */
+    ui->height = ui->style.row_height + top_gap
+               + visible * ui->style.row_height + 2;
     if (ui->height > ui->screen_height) {
         ui->height = ui->screen_height;
     }
@@ -103,9 +155,9 @@ static void work_out_geometry(RunnerUi *ui) {
     int y;
 
     if (strcmp(ui->config.position, "top") == 0) {
-        y = 60;
+        y = 80;
     } else if (strcmp(ui->config.position, "bottom") == 0) {
-        y = ui->screen_height - ui->height - 60;
+        y = ui->screen_height - ui->height - 80;
         if (y < 0) {
             y = 0;
         }
@@ -175,7 +227,7 @@ static void refresh(RunnerUi *ui) {
 /* How many rows fit in the window, which is what the scroll is kept inside. */
 static int visible_rows(const RunnerUi *ui) {
     int rows = ui->config.rows;
-    int room = (ui->height - ui->style.row_height - 2) / ui->style.row_height;
+    int room = (ui->height - ui->style.row_height - 8) / ui->style.row_height;
     if (room < rows) {
         rows = room;
     }
@@ -278,7 +330,7 @@ static void choose_selected(RunnerUi *ui) {
 /* Choose the nth row of the visible window, for a click: the row a click
    landed on, not the one the keyboard was on. */
 static void choose_clicked_row(RunnerUi *ui, int y) {
-    int top = ui->style.row_height + 2;
+    int top = ui->style.row_height + 6;
     if (y < top) {
         return;         /* the click was on the query line */
     }
@@ -403,44 +455,46 @@ static int key_release_is_repeat(Display *display, XKeyEvent *release) {
 
 /* --- the window ----------------------------------------------------------- */
 
-/* Take the keyboard and the pointer for as long as the launcher is up.
+/* Take the keyboard and, when possible, the pointer for as long as the
+ * launcher is up.
  *
- * The input focus is set first, and that is the part that was missing. The
- * window is override-redirect, so GnuChanWM — the window manager on this
- * desktop — never sees it in its frame table and never focuses it. Without
- * XSetInputFocus here the keys keep going to whatever had the keyboard before
- * the launcher opened: the arrow keys move something else's list, and the
- * launcher sits in front taking nothing. Setting it is the launcher's own job
- * because there is no window manager going to do it.
+ * The window is override-redirect, so the window manager may never focus it for
+ * us. We ask for input focus and try to grab the keyboard so typed keys reach
+ * the launcher instead of the window underneath. Pointer grabbing is useful for
+ * click-to-launch/click-outside behavior, but some environments refuse it
+ * transiently; the launcher can still work from the keyboard, so pointer grab is
+ * treated as best-effort.
  *
- * The grabs come next, and both are retried. A grab is refused with
- * GrabNotViewable while the server is still finishing the map, and with
- * AlreadyGrabbed while another client is holding one for a moment — both are
- * states that pass, and a launcher that gave up on the first refusal is a
- * launcher whose keyboard does not work. The retries are a few hundred
- * milliseconds in the worst case, which is shorter than it takes to move a
- * hand to the keyboard.
+ * Grabs are retried because GrabNotViewable and AlreadyGrabbed can be brief
+ * states while the map/focus settles or a previous instance has just released.
  */
 static int grab_input(RunnerUi *ui) {
+    /* A previous GnuChanRunner process that crashed may have left grabs active.
+       Clearing them first avoids a whole retry window spent on AlreadyGrabbed. */
+    XUngrabKeyboard(ui->display, CurrentTime);
+    XUngrabPointer(ui->display, CurrentTime);
+    XSync(ui->display, False);
+
     begin_checked_x_request(ui->display);
     int focus_request = XSetInputFocus(ui->display, ui->window,
                                        RevertToPointerRoot, CurrentTime);
     int focus_request_succeeded = finish_checked_x_request(ui->display);
-    Window focus = None;
-    int revert_to = RevertToNone;
-    int focus_query_succeeded =
-        XGetInputFocus(ui->display, &focus, &revert_to);
-    if (!focus_request || !focus_request_succeeded ||
-        !focus_query_succeeded || focus != ui->window) {
-        fprintf(stderr, "gnuchanrunner: could not take input focus\n");
-        return 0;
+    if (!focus_request || !focus_request_succeeded) {
+        fprintf(stderr, "gnuchanrunner: warning: could not set input focus\n");
     }
 
     int pointer = GrabNotViewable;
     int keyboard = GrabNotViewable;
     int pointer_grabbed = 0;
     int keyboard_grabbed = 0;
-    for (int attempt = 0; attempt < 20; attempt++) {
+
+    for (int attempt = 0; attempt < 80; attempt++) {
+        if (!keyboard_grabbed) {
+            keyboard = XGrabKeyboard(ui->display, ui->window, False,
+                                     GrabModeAsync, GrabModeAsync,
+                                     CurrentTime);
+            keyboard_grabbed = keyboard == GrabSuccess;
+        }
         if (!pointer_grabbed) {
             pointer = XGrabPointer(
                 ui->display, ui->window, False,
@@ -448,26 +502,29 @@ static int grab_input(RunnerUi *ui) {
                 GrabModeAsync, GrabModeAsync, None, None, CurrentTime);
             pointer_grabbed = pointer == GrabSuccess;
         }
-        if (!keyboard_grabbed) {
-            keyboard = XGrabKeyboard(ui->display, ui->window, False,
-                                     GrabModeAsync, GrabModeAsync,
-                                     CurrentTime);
-            keyboard_grabbed = keyboard == GrabSuccess;
-        }
-        if (pointer_grabbed && keyboard_grabbed) {
+        if (keyboard_grabbed && pointer_grabbed) {
             return 1;
         }
         usleep(10000);
     }
-    if (keyboard_grabbed) {
-        XUngrabKeyboard(ui->display, CurrentTime);
+
+    if (!keyboard_grabbed) {
+        if (pointer_grabbed) {
+            XUngrabPointer(ui->display, CurrentTime);
+        }
+        fprintf(stderr, "gnuchanrunner: could not grab keyboard (keyboard %d, "
+                        "pointer %d)\n", keyboard, pointer);
+        return 0;
     }
-    if (pointer_grabbed) {
-        XUngrabPointer(ui->display, CurrentTime);
+
+    if (!pointer_grabbed) {
+        /* Keyboard-only mode: typing/Enter/Escape still work. Click-outside
+           detection is less reliable without a pointer grab, but failing to open
+           was worse. */
+        fprintf(stderr, "gnuchanrunner: warning: running without pointer grab "
+                        "(pointer %d)\n", pointer);
     }
-    fprintf(stderr, "gnuchanrunner: could not grab input (pointer %d, "
-                    "keyboard %d)\n", pointer, keyboard);
-    return 0;
+    return 1;
 }
 
 static void ungrab_input(RunnerUi *ui) {
@@ -526,6 +583,9 @@ int runner_ui_open(RunnerUi *ui, const char *config_path) {
         fprintf(stderr, "gnuchanrunner: cannot make a graphics context\n");
         return -1;
     }
+    ui->buffer = None;
+    ui->buffer_width = 0;
+    ui->buffer_height = 0;
 
     XSetWindowAttributes attributes;
     memset(&attributes, 0, sizeof(attributes));
@@ -537,7 +597,8 @@ int runner_ui_open(RunnerUi *ui, const char *config_path) {
     attributes.border_pixel = 0;
     attributes.event_mask = ExposureMask | KeyPressMask | KeyReleaseMask |
                             ButtonPressMask | ButtonReleaseMask |
-                            PointerMotionMask;
+                            PointerMotionMask | StructureNotifyMask |
+                            VisibilityChangeMask;
 
     ui->window = XCreateWindow(ui->display, ui->root, 0, 0,
                                (unsigned int)ui->config.width, 100, 0,
@@ -589,6 +650,7 @@ int runner_ui_open(RunnerUi *ui, const char *config_path) {
         runner_key_state_capture(&ui->keys_held_at_open, keymap);
     }
     runner_draw(ui);
+    XSync(ui->display, False);
     ui->running = 1;
     return 0;
 }
@@ -652,18 +714,43 @@ int runner_ui_run(RunnerUi *ui) {
             }
             break;
 
+        case VisibilityNotify:
+            /* If the launcher becomes fully hidden behind other windows, raise
+               it again. Override-redirect windows are not restacked by the
+               window manager, so a newly mapped client can otherwise leave the
+               interface effectively gone while the launcher is still running. */
+            if (event.xvisibility.window == ui->window &&
+                event.xvisibility.state == VisibilityFullyObscured) {
+                XRaiseWindow(ui->display, ui->window);
+            }
+            break;
+
+        case UnmapNotify:
+            /* Keep the launcher visible for as long as it is active. */
+            if (event.xunmap.window == ui->window) {
+                XMapRaised(ui->display, ui->window);
+            }
+            break;
+
         case ConfigureNotify:
         case MapNotify:
             /* A window was moved, resized or shown — a program that just
                started, most of the time — and if it was raised over the
                launcher, the launcher is now behind it. The launcher is put
-               back on top, and only for a window that is NOT its own: its own
-               raise arrives right back here, and the test keeps it plain (an
-               already-top window is a no-op on the server, so the chain would
-               stop anyway). The launcher does not care what the window is; it
-               only has to stay in front of it for as long as it is up. */
-            if (event.xany.window != ui->window) {
+               back on top. Also react to events for our own window so it stays
+               mapped and raised if something disturbs its stacking. */
+            if (event.xany.window == ui->window) {
                 XRaiseWindow(ui->display, ui->window);
+            } else {
+                XRaiseWindow(ui->display, ui->window);
+            }
+            break;
+
+        case DestroyNotify:
+            if (event.xdestroywindow.window == ui->window) {
+                ui->running = 0;
+                ui->launch_selected = -1;
+                ui->launch_command[0] = '\0';
             }
             break;
 
@@ -687,6 +774,10 @@ int runner_ui_run(RunnerUi *ui) {
 void runner_ui_close(RunnerUi *ui) {
     if (ui->display) {
         ungrab_input(ui);
+        if (ui->buffer != None) {
+            XFreePixmap(ui->display, ui->buffer);
+            ui->buffer = None;
+        }
         if (ui->gc) {
             XFreeGC(ui->display, ui->gc);
             ui->gc = NULL;
@@ -706,6 +797,9 @@ void runner_ui_close(RunnerUi *ui) {
         XCloseDisplay(ui->display);
         ui->display = NULL;
     }
+
+    ui->buffer_width = 0;
+    ui->buffer_height = 0;
 
     runner_apps_free(&ui->programs);
     runner_match_free(&ui->matches);
