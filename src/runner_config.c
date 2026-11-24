@@ -43,31 +43,30 @@
 void runner_config_defaults(RunnerConfig *config) {
     memset(config, 0, sizeof(*config));
 
-    snprintf(config->prompt, sizeof(config->prompt), "Run:");
+    snprintf(config->prompt, sizeof(config->prompt), "›");
     snprintf(config->placeholder, sizeof(config->placeholder),
-             "Type to search programs");
+             "Search apps and commands...");
     snprintf(config->empty_message, sizeof(config->empty_message),
-             "Nothing matches");
+             "No matching applications");
 
-    snprintf(config->font_family, sizeof(config->font_family), "monospace");
-    config->font_size = 13;
+    snprintf(config->font_family, sizeof(config->font_family),
+             "Sans:pixelsize=14");
+    config->font_size = 14;
 
-    /* Wide enough for a program's name and its description on one line, and
-       eight rows tall: enough to see what a query found without the list
-       becoming the whole screen. */
-    config->width = 520;
-    config->rows = 8;
+    /* A comfortable default size: wide enough for names/descriptions and tall
+       enough to scan results without dominating the screen. */
+    config->width = 720;
+    config->rows = 10;
     snprintf(config->position, sizeof(config->position), "center");
 
-    /* The same purple the window manager and the greeter are drawn in, as
-       names. They are resolved to pixels by whoever has a display. */
-    snprintf(config->background, sizeof(config->background), "#1a0b2e");
-    snprintf(config->panel, sizeof(config->panel), "#32143f");
-    snprintf(config->panel_edge, sizeof(config->panel_edge), "#7b2cbf");
-    snprintf(config->field, sizeof(config->field), "#241033");
-    snprintf(config->text, sizeof(config->text), "#e0c3fc");
-    snprintf(config->text_muted, sizeof(config->text_muted), "#9d7bba");
-    snprintf(config->accent, sizeof(config->accent), "#c77dff");
+    /* Refreshed dark palette with clearer contrast and a calmer accent. */
+    snprintf(config->background, sizeof(config->background), "#161821");
+    snprintf(config->panel, sizeof(config->panel), "#1f2330");
+    snprintf(config->panel_edge, sizeof(config->panel_edge), "#2b3142");
+    snprintf(config->field, sizeof(config->field), "#2a3348");
+    snprintf(config->text, sizeof(config->text), "#e6eaf2");
+    snprintf(config->text_muted, sizeof(config->text_muted), "#98a2b3");
+    snprintf(config->accent, sizeof(config->accent), "#7aa2f7");
 
     /* Forgiving by default. A capital letter is not something a person
        remembers about a program's name, and a launcher that missed a program
@@ -434,6 +433,38 @@ char *runner_config_path(char *buffer, unsigned int size) {
     return buffer;
 }
 
+
+static void apply_system_theme(RunnerConfig *config) {
+    typedef struct { const char *name; const char *bg; const char *panel; const char *edge; const char *field; const char *text; const char *muted; const char *accent; } P;
+    static const P presets[] = {
+        {"Purple","#1a0b2e","#241033","#7b2cbf","#2d1b3d","#e0c3fc","#9d7bba","#c77dff"},
+        {"Black","#101010","#202020","#666666","#292929","#f5f5f5","#b8b8b8","#c4c4c4"},
+        {"White","#ffffff","#e8e8e8","#666666","#ffffff","#171717","#5a5a5a","#414141"},
+        {"Gray","#101010","#202020","#666666","#292929","#f5f5f5","#b8b8b8","#a0a0a0"},
+        {"Blue","#161e27","#27323f","#5e82aa","#303c4b","#ebf0f5","#a4b4c6","#55a5ff"},
+        {"Green","#17231a","#28382c","#61966f","#314435","#ebf2ed","#a5bdab","#5bd27a"},
+        {"Orange","#271e16","#3f3127","#aa7e5d","#4b3b2f","#f5efeb","#c6b2a3","#ff9c52"},
+        {"Yellow","#252214","#3b3623","#a09053","#47412c","#f4f2e9","#c1ba9f","#e7c43c"},
+        {"Red","#27181a","#3f292c","#aa666e","#4b3235","#f5eced","#c6a7ab","#ff6678"},
+        {"Pink","#271a20","#3f2c35","#aa6e8a","#4b353f","#f5edf1","#c6abb7","#ff78b7"},
+    };
+    char sys[1024]; const char *xdg=getenv("XDG_CONFIG_HOME"), *home=getenv("HOME");
+    if(xdg&&*xdg) snprintf(sys,sizeof(sys),"%s/GnuChanSettings/system.conf",xdg);
+    else if(home&&*home) snprintf(sys,sizeof(sys),"%s/.config/GnuChanSettings/system.conf",home);
+    else return;
+    FILE *f=fopen(sys,"r"); if(!f) return; char line[512],name[64]="Purple";
+    while(fgets(line,sizeof(line),f)){char *q=line; while(*q==' '||*q=='\t')q++; if(strncmp(q,"ThemeColor",10)!=0) continue; char *eq=strchr(q,'='); if(!eq) continue; char *v=eq+1; while(*v==' '||*v=='\t'||*v=='"'||*v=='\'')v++; size_t n=strcspn(v," \t\r\n\"'#;,"); if(n>0&&n<sizeof(name)){memcpy(name,v,n);name[n]='\0';} break;}
+    fclose(f);
+    for(size_t i=0;i<sizeof(presets)/sizeof(presets[0]);i++){ if(strcasecmp(presets[i].name,name)!=0) continue;
+        snprintf(config->background,sizeof(config->background),"%s",presets[i].bg);
+        snprintf(config->panel,sizeof(config->panel),"%s",presets[i].panel);
+        snprintf(config->panel_edge,sizeof(config->panel_edge),"%s",presets[i].edge);
+        snprintf(config->field,sizeof(config->field),"%s",presets[i].field);
+        snprintf(config->text,sizeof(config->text),"%s",presets[i].text);
+        snprintf(config->text_muted,sizeof(config->text_muted),"%s",presets[i].muted);
+        snprintf(config->accent,sizeof(config->accent),"%s",presets[i].accent);
+        return; }
+}
 int runner_config_load(RunnerConfig *config, const char *path) {
     /* The defaults are laid down first, and the walk only ever changes what
        the file names. That is what makes a settings file able to name one
@@ -501,5 +532,6 @@ int runner_config_load(RunnerConfig *config, const char *path) {
         snprintf(config->font_family, sizeof(config->font_family), "monospace");
     }
 
+    apply_system_theme(config);
     return 0;
 }
